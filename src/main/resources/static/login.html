@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>登录</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="image/favicon.ico" sizes="16*16">
+    <script type="text/javascript" src="lib/layui/layui.all.js"></script>
+    <script type="text/javascript" src="js/jQuery.js"></script>
+    <script type="text/javascript" src="js/main.js"></script>
+    <link rel="stylesheet" type="text/css" href="lib/layui/css/layui.css?v1">
+    <link rel="stylesheet" type="text/css" href="css/login.css">
+</head>
+<body>
+<div class="container">
+    <div class="login-wrapper">
+        <div class="header">羊圈后台管理系统</div>
+        <div class="form-wrapper">
+            <input type="text" name="username" placeholder="用户名" class="input-item">
+            <input type="password" name="password" placeholder="密码" class="input-item">
+            <div class="btn" id="login">登录</div>
+        </div>
+    </div>
+</div>
+<script>
+    $(function () {
+
+        if (self !== top){
+            window.top.location.replace(self.location); //打开自己网站的页面
+        }
+        layer.config({
+            time:1500
+        });
+
+        $(document).keydown(function(event){
+            if(event.which === 13){
+                $("#login").trigger("click");
+            }
+        });
+
+        $("#login").on('click',function () {
+            var username = $("input[name='username']").val();
+            if(!username){
+                layer.msg("用户名不能为空");
+                return;
+            }
+            if(username.length > 20){
+                layer.msg("用户名不能超过20个字符");
+                return;
+            }
+            var password = $("input[name='password']").val();
+            if(!password){
+                layer.msg("密码不能为空");
+                return;
+            }
+            if(password.length > 20){
+                layer.msg("密码不能超过20个字符");
+                return;
+            }
+            var config = {};
+            config.url = "user/check";
+            config.method = "POST";
+            config.data = {
+                "username": username,
+                "password": password
+            };
+            config.header = {
+                "token":"token"
+            };
+            //发送请求
+            sendRequest(config,function (resp) {
+                if (resp.code === 1) {
+                    localStorage.setItem("token",resp.data.token);
+                    localStorage.setItem("nickname",resp.data.nickname);
+                    window.location.href = "main.html";
+                } else {
+                    layer.msg(resp.msg);
+                }
+            },function () {
+                layer.msg("请稍后再试");
+            });
+        });
+    });
+</script>
+</body>
+</html>

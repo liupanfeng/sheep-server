@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Layui</title>
+    <meta name="renderer" content="webkit">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <script type="text/javascript" src="../../lib/layui/layui.js"></script>
+    <script type="text/javascript" src="../../js/main.js"></script>
+    <link rel="stylesheet" type="text/css" href="../../lib/layui/css/layui.css?v1">
+</head>
+<body>
+
+<div style="padding: 20px">
+    <div class="layui-form">
+        <button class="layui-btn" id="add">添加</button>
+
+    </div>
+    <table class="layui-hide" id="test" lay-filter="test"></table>
+</div>
+
+<script type="text/html" id="barDemo">
+    <a class="layui-btn layui-btn-primary layui-btn-xs" lay-event="edit">编辑</a>
+    <a class="layui-btn normal layui-btn-xs" lay-event="history">历史行情</a>
+    <a class="layui-btn layui-btn-danger layui-btn-xs" lay-event="del">删除</a>
+</script>
+
+<script>
+    layui.use(['table','form','layer'], function () {
+        var table = layui.table;
+        var form = layui.form;
+        var layer = layui.layer;
+        var $ = layui.$;
+
+        //打开的弹窗的索引
+        var openIndex;
+
+        table.render({
+            elem: '#test'
+            ,id:'quotation'
+            , url: '/manage/quotation/list'
+            ,request: {
+                pageName: 'pageNum' //页码的参数名称，默认：page
+                ,limitName: 'pageSize' //每页数据量的参数名，默认：limit
+            }
+            ,method:"post"
+            ,where:{"type":5}
+            ,headers: {"token": localStorage.getItem("token")}
+            ,response: {
+                statusCode: 1 //规定成功的状态码，默认：0
+            }
+            ,parseData: function(res){ //res 即为原始返回的数据
+                //如果token失效的话，需要重新登录
+                if(res.code === -2){
+                    window.top.location.replace("/manage/login.html");
+                    return;
+                }
+                return {
+                    "code": res.code, //解析接口状态
+                    "msg": res.msg, //解析提示文本
+                    "count": res.data.count, //解析数据长度
+                    "data": res.data.elements //解析数据列表
+                };
+            }
+            //, toolbar: '#toolbarDemo' //开启头部工具栏，并为其绑定左侧模板
+            , defaultToolbar: []
+            , title: '用户数据表'
+            , cols: [[
+                {type: 'checkbox', fixed: 'left'}
+                , {field: 'id', title: 'ID',  fixed: 'left', unresize: true}
+                , {field: 'name', title: '品种'}
+                , {field: 'place', title: '产地'}
+                , {field: 'specification', title: '规格'}
+                , {field: 'modDate', title: '修改时间'}
+                , {field: 'todayPrice', title: '今日行情'}
+                , {fixed: 'right', title: '操作', toolbar: '#barDemo'}
+            ]]
+            , page: { //支持传入 laypage 组件的所有参数（某些参数除外，如：jump/elem） - 详见文档
+                layout: ['prev', 'page', 'next', 'skip', 'count', 'limit'] //自定义分页布局
+                //,curr: 5 //设定初始在第 5 页
+                , groups: 1 //只显示 1 个连续页码
+                , first: false //不显示首页
+                , last: false //不显示尾页
+                , limit:10
+                , limits:[10,50]
+            }
+        });
+
+
+        //监听行工具事件
+        table.on('tool(test)', function (obj) {
+            var data = obj.data;
+            if (obj.event === 'del') {
+                layer.confirm('确定删除么', function (index) {
+                    layer.close(index);
+                    var config = {};
+                    config.url = "/manage/quotation/delete";
+                    config.method = "POST";
+                    config.data = {
+                        "id":data.id
+                    };
+                    //发送请求
+                    sendRequest(config,function (resp) {
+                        if (resp.code === 1) {
+                            //删除该行
+                            obj.del();
+                        } else {
+                            layer.msg(resp.msg);
+                        }
+                    },function () {
+                        layer.msg("请稍后再试");
+                    });
+
+                });
+            }else if(obj.event === 'edit') {
+                //编辑窗口
+                //获取当前分类
+                var value = $('select[name="type"] option:selected');
+                openIndex = layer.open({
+                    type: 1,
+                    title:"编辑行情  " + value.text(),
+                    area: ['450px', '350px'], //宽高
+                    content: formContent(value.val(),data.id,data.name,data.place,data.specification,data.todayPrice)
+                });
+            }else if(obj.event === 'history') {
+                var config = {};
+                config.url = "/manage/quotation/history";
+                config.method = "POST";
+                config.data = {
+                    "id":data.id
+                };
+                var name = data.name;
+                //发送请求
+                sendRequest(config,function (resp) {
+                    if (resp.code === 1) {
+                        if(resp.data.dates.length === 0 || resp.data.prices === 0){
+                            layer.msg("当前行情没有历史数据");
+                            return false;
+                        }
+                        //历史行情
+                        var option = {
+                            legend: {
+                                data: ['平均价格']
+                            },
+                            xAxis: {
+                                data: resp.data.dates
+                            },
+                            yAxis: {
+                                type: 'value'
+                            },
+                            series: [{
+                                name: '平均价格',
+                                type: 'line',
+                                data: resp.data.prices,
+                                itemStyle: {
+                                    normal: { //柱子颜色
+                                        color: '#009688'
+                                    }
+                                }
+                            }]
+                        };
+                        chartZhu.setOption(option, true);
+                        openIndex = layer.open({
+                            type: 1,
+                            title:"历史行情 " + name,
+                            area: ['550px'], //宽高
+                            content: $("#echarts"),
+                            success: function(index, layero){
+                                $("#echarts").show();
+                            },
+                            cancel: function(index, layero){
+                                $("#echarts").hide();
+                            }
+                        });
+                    } else {
+                        layer.msg(resp.msg);
+                    }
+                },function () {
+                    layer.msg("请稍后再试");
+                });
+            }
+        });
+
+        //表格重载
+        var active = {
+            reload: function(type){
+                //执行重载
+                table.reload('quotation', {
+                    page: {
+                        curr: 1 //重新从第 1 页开始
+                    }
+                    ,where: {
+                        "type": type
+                    }
+                }, 'data');
+            }
+        };
+
+        //添加新的行情
+        $('#add').on('click', function(){
+            window.parent.window.change("page/home/news-add.html");
+        });
+
+        //提交保存行情请求
+        form.on('submit(addFrom)', function(data){
+            var config = {};
+            config.url = "/manage/quotation/save";
+            config.method = "POST";
+            config.data = data.field;
+            //发送请求
+            sendRequest(config,function (resp) {
+                if (resp.code === 1) {
+                    layer.close(openIndex);
+                    //重新加载表格
+                    active.reload.call(this,$('select[name="type"]').val());
+                } else {
+                    layer.msg(resp.msg);
+                }
+            },function () {
+                layer.msg("请稍后再试");
+            });
+            return false;
+        });
+        //表单校验
+        form.verify({
+            //数组的两个值分别代表：[正则匹配、匹配不符时的提示文字]
+            decimal: [
+                /^[0-9]+(.[0-9]{2})?$/
+            ,'行情必须为数字，小数点后最多输入两位'
+            ]
+        });
+    });
+
+    /**
+     * 保存或者编辑弹框内容
+     * @param type  行情的小类
+     * @param id    品种的id
+     * @param name  品种名称
+     * @param place 品种产地
+     * @param specification 品种规格
+     * @param todayPrice    今日行情
+     * @returns {string}
+     */
+    function formContent(type,id,name,place,specification,todayPrice) {
+        if(!todayPrice){
+            todayPrice = "";
+        }
+        return "<form class=\"layui-form\" action=\"\" lay-filter=\"example\" style=\"margin-top: 20px\">\n" +
+            "        <div class=\"layui-form-item\">\n" +
+            "            <label class=\"layui-form-label\">名称</label>\n" +
+            "            <div class=\"layui-input-block\" style=\"width: 200px;\">\n" +
+            "                <input type=\"text\" name=\"name\" lay-verify=\"required\" value='" + name + "' autocomplete=\"off\" placeholder=\"请输入名称\" lay-verType='tips' class=\"layui-input\">\n" +
+            "            </div>\n" +
+            "        </div>\n" +
+            "        <div class=\"layui-form-item\">\n" +
+            "            <label class=\"layui-form-label\">产地</label>\n" +
+            "            <div class=\"layui-input-block\" style=\"width: 200px;\">\n" +
+            "                <input type=\"text\" name=\"place\" lay-verify=\"required\" value='" + place + "' autocomplete=\"off\" placeholder=\"请输入产地\" lay-verType='tips'  class=\"layui-input\">\n" +
+            "            </div>\n" +
+            "        </div>\n" +
+            "        <div class=\"layui-form-item\">\n" +
+            "            <label class=\"layui-form-label\">规格</label>\n" +
+            "            <div class=\"layui-input-block\" style=\"width: 200px;\">\n" +
+            "                <input type=\"text\" name=\"specification\" lay-verify=\"required|number\" value='" + specification + "' autocomplete=\"off\" lay-verType='tips'  placeholder=\"请输入规格\" class=\"layui-input\">\n" +
+            "            </div>\n" +
+            "        </div>\n" +
+            "        <div class=\"layui-form-item\">\n" +
+            "            <label class=\"layui-form-label\">今日行情</label>\n" +
+            "            <div class=\"layui-input-block\" style=\"width: 200px;\">\n" +
+            "                <input type=\"text\" name=\"todayPrice\" lay-verify=\"decimal\" value='" + todayPrice + "' autocomplete=\"off\" placeholder=\"请输入今日行情\" lay-verType='tips'  class=\"layui-input\">\n" +
+            "            </div>\n" +
+            "        </div>\n" +
+            "        <input type=\"hidden\" name=\"type\" value = \"" + type + "\">\n" +
+            "        <input type=\"hidden\" name=\"id\" value = \"" + id + "\">\n" +
+            "        <div class=\"layui-form-item\">\n" +
+            "            <div class=\"layui-input-block\">\n" +
+            "                <button type=\"submit\" class=\"layui-btn\" lay-submit lay-filter=\"addFrom\">确定</button>\n" +
+            "            </div>\n" +
+            "        </div>\n" +
+            "    </form>";
+    }
+</script>
+</body>
+
+</html>
